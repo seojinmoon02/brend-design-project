@@ -95,8 +95,8 @@ test("effect toggles preserve intensity and remove filters from instances", () =
   assert.doesNotMatch(renderSVG(s), /<g data-instance[^>]*filter=/);
   s.appearance.blurEnabled = true;
   s.appearance.grainEnabled = true;
-  assert.match(renderSVG(s), /filter="url\(#pattern-soft\)"/);
-  assert.match(renderSVG(s), /filter="url\(#pattern-texture\)" opacity="0.7"/);
+  assert.match(renderSVG(s), /stdDeviation="16"/);
+  assert.match(renderSVG(s), /filter="url\(#pattern-texture\)"/);
   const structure = renderSVG(s, 0, { structure: true });
   assert.doesNotMatch(structure, /<g data-instance[^>]*filter=/);
   s.appearance.blurEnabled = false;

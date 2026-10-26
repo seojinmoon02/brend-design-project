@@ -47,6 +47,7 @@ export const initial = () => ({
     stroke: "#F2F2F2",
     strokeWidth: 0,
     grain: 0,
+    grainSize: 3,
     light: 0,
     soft: 0,
     effectRole: "all",
@@ -252,7 +253,10 @@ export function renderSVG(
   }
   const blur = a.blurEnabled !== false ? a.soft : 0;
   const grain = a.grainEnabled !== false ? a.grain : 0;
-  let filter = `<filter id="texture" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".65" numOctaves="3" seed="${s.seed}" result="noise"/><feColorMatrix in="noise" type="saturate" values="0"/><feComposite in2="SourceGraphic" operator="in"/><feBlend in="SourceGraphic" mode="soft-light"/></filter><filter id="soft" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${blur}"/></filter>`;
+  // Blur the color layer first, then composite high-contrast noise over it.
+  // The noise alpha follows the blurred silhouette, including PNG holes.
+  const grainMix = grain * 0.8;
+  let filter = `<filter id="texture" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="${blur}" result="base"/><feTurbulence type="fractalNoise" baseFrequency="${1 / (2 * (a.grainSize || 3))}" numOctaves="1" seed="${s.seed}" result="noise"/><feColorMatrix in="noise" type="saturate" values="0" result="gray"/><feComponentTransfer in="gray" result="contrast"><feFuncR type="linear" slope="3" intercept="-1"/><feFuncG type="linear" slope="3" intercept="-1"/><feFuncB type="linear" slope="3" intercept="-1"/><feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer><feComposite in="contrast" in2="base" operator="in" result="clipped"/><feComposite in="base" in2="clipped" operator="arithmetic" k1="0" k2="${1 - grainMix}" k3="${grainMix}" k4="0"/></filter><filter id="soft" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${blur}"/></filter>`;
   const fill = (role) => (structure ? "#292a28" : a[role]);
   if (m.formation && form < 0.02)
     items = [
@@ -284,7 +288,7 @@ export function renderSVG(
           ? cyclePalette(a.palette, index + phase * a.palette.length)
           : `hsl(${(phase * 360 + (v.role === "primary" ? 15 : 210)) % 360} 85% 55%)`;
       const effect = a.effectRole === "all" || a.effectRole === v.role;
-      return `<g data-instance="${esc(v.id || String(i))}" transform="translate(${v.x} ${v.y}) rotate(${angle}) scale(${(size / 144) * v.scale}) translate(${-u.cx + u.anchor} ${-u.cy})" fill="${color}" stroke="${structure ? "none" : a.stroke}" stroke-width="${a.strokeWidth}" ${effect && blur && !structure ? 'filter="url(#soft)"' : ""}><use href="#source"/>${effect && grain && !structure ? `<use href="#source" filter="url(#texture)" opacity="${grain}"/>` : ""}${effect && a.light && !structure ? `<use href="#source" fill="url(#shine)" opacity="${a.light}"/>` : ""}</g>`;
+      return `<g data-instance="${esc(v.id || String(i))}" transform="translate(${v.x} ${v.y}) rotate(${angle}) scale(${(size / 144) * v.scale}) translate(${-u.cx + u.anchor} ${-u.cy})" fill="${color}" stroke="${structure ? "none" : a.stroke}" stroke-width="${a.strokeWidth}" ${effect && !structure && (grain || blur) ? `filter="url(#${grain ? "texture" : "soft"})"` : ""}><use href="#source"/>${effect && a.light && !structure ? `<use href="#source" fill="url(#shine)" opacity="${a.light}"/>` : ""}</g>`;
     })
     .join("");
   if (guides)

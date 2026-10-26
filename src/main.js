@@ -203,6 +203,8 @@ function validate(v) {
   if (
     v.appearance.grain < 0 ||
     v.appearance.grain > 1 ||
+    v.appearance.grainSize < 1 ||
+    v.appearance.grainSize > 8 ||
     v.appearance.soft < 0 ||
     v.appearance.soft > 24
   )
@@ -359,7 +361,7 @@ function rightPanel() {
             ["primary", "주 조형만"],
             ["secondary", "보조 조형만"],
           ],
-        )}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="grainEnabled" ${s.appearance.grainEnabled ? "checked" : ""}/> 그레인 켜기</label>${slider("그레인 강도", "appearance", "grain", 0, 1, 0.05)}${slider("내부 밝기", "appearance", "light", 0, 1, 0.05)}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="blurEnabled" ${s.appearance.blurEnabled ? "checked" : ""}/> 블러 켜기</label>${slider("블러 강도", "appearance", "soft", 0, 24, 0.5)}<p class="hint">그레인은 시드로 고정됩니다. SVG 필터는 편집 프로그램에 따라 다르게 보일 수 있습니다.</p>`
+        )}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="grainEnabled" ${s.appearance.grainEnabled ? "checked" : ""}/> 그레인 켜기</label>${slider("그레인 강도", "appearance", "grain", 0, 1, 0.05)}${slider("입자 크기", "appearance", "grainSize", 1, 8, 0.5)}${slider("내부 밝기", "appearance", "light", 0, 1, 0.05)}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="blurEnabled" ${s.appearance.blurEnabled ? "checked" : ""}/> 블러 켜기</label>${slider("블러 강도", "appearance", "soft", 0, 24, 0.5)}<p class="hint">그레인은 블러 위에 적용됩니다. 입자가 작게 보이면 입자 크기와 강도를 높여 보세요. 시드로 고정됩니다. SVG 필터는 편집 프로그램에 따라 다르게 보일 수 있습니다.</p>`
       : ""
   }<div class="panel-note">${icon("info", 14)}<p>정지 자료에서 관찰한 규칙의 재구성입니다. 수치는 조절 가능한 추정값입니다.</p></div></div>`;
 }

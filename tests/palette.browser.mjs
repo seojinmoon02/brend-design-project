@@ -67,8 +67,10 @@ try {
   assert.equal(effected.appearance.grain, 0.35);
   await page.locator('[data-effect="blurEnabled"]').uncheck();
   assert.equal(
-    await page.locator("#artwork g[data-instance][filter]").count(),
-    0,
+    await page
+      .locator("#artwork filter[id=pattern-texture] feGaussianBlur")
+      .getAttribute("stdDeviation"),
+    "0",
   );
   await page.locator('[data-effect="blurEnabled"]').check();
   assert.equal((await getProject()).appearance.soft, 16);
