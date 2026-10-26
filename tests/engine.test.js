@@ -61,3 +61,46 @@ test("structure and exported pattern omit editing guides by default", () => {
   assert.doesNotMatch(svg, /stroke-dasharray/);
   assert.doesNotMatch(svg, /SOURCE TRANSFORM|PATTERN EXPLORATION/);
 });
+
+test("4–6 colors appear in every preset, with stable assignments and loop closure", async () => {
+  const { generatePalette, paletteIndex } = await import("../src/engine.js");
+  for (const n of [4, 5, 6])
+    for (const preset of ["A", "B", "C", "D", "E", "F"]) {
+      const s = initial();
+      s.layoutRecipe.preset = preset;
+      s.appearance.paletteEnabled = true;
+      s.appearance.palette = generatePalette(n, 7);
+      const svg = renderSVG(s, 0);
+      for (const color of s.appearance.palette)
+        assert.ok(
+          svg.includes(`fill="${color}"`),
+          `${preset}/${n} missing ${color}`,
+        );
+      assert.equal(renderSVG(JSON.parse(JSON.stringify(s))), svg);
+      s.motion.type = "color";
+      assert.equal(renderSVG(s, 0), renderSVG(s, 6));
+      for (let row = -3; row < 3; row++)
+        assert.equal(
+          paletteIndex(`${row}:2-4`, n),
+          paletteIndex(`${row + n}:2-4`, n),
+        );
+    }
+  assert.deepEqual(generatePalette(6, 42), generatePalette(6, 42));
+  assert.notDeepEqual(generatePalette(6, 42), generatePalette(6, 43));
+});
+test("effect toggles preserve intensity and remove filters from instances", () => {
+  const s = initial();
+  s.appearance.soft = 16;
+  s.appearance.grain = 0.7;
+  assert.doesNotMatch(renderSVG(s), /<g data-instance[^>]*filter=/);
+  s.appearance.blurEnabled = true;
+  s.appearance.grainEnabled = true;
+  assert.match(renderSVG(s), /filter="url\(#pattern-soft\)"/);
+  assert.match(renderSVG(s), /filter="url\(#pattern-texture\)" opacity="0.7"/);
+  const structure = renderSVG(s, 0, { structure: true });
+  assert.doesNotMatch(structure, /<g data-instance[^>]*filter=/);
+  s.appearance.blurEnabled = false;
+  s.appearance.grainEnabled = false;
+  assert.equal(s.appearance.soft, 16);
+  assert.doesNotMatch(renderSVG(s), /filter="url\(#pattern-texture\)"/);
+});

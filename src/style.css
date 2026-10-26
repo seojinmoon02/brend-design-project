@@ -1437,3 +1437,99 @@ dialog progress {
 .motion-key-states {
   flex-wrap: wrap;
 }
+.custom-palette {
+  margin: 20px 0;
+  padding: 12px;
+  border: 1px solid #dfe3d5;
+  border-radius: 5px;
+  background: #f2f4eb;
+}
+.custom-palette > .section-label {
+  margin: 0 0 14px;
+  letter-spacing: 0.3px;
+}
+.custom-palette .checkbox,
+.effect-toggle {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 10px;
+  color: #6d7b5d;
+}
+.custom-palette input[type="checkbox"],
+.effect-toggle input {
+  accent-color: #667c4d;
+}
+.custom-palette .select-control {
+  margin: 14px 0;
+}
+.custom-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 8px;
+  margin-bottom: 15px;
+}
+.custom-swatches label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: #8a957e;
+  font-size: 9px;
+}
+.custom-swatches input[type="color"] {
+  width: 100%;
+  height: 30px;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+.custom-swatches input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  font: 9px monospace;
+  border: 1px solid #dce1d2;
+  padding: 5px;
+  border-radius: 3px;
+  background: #fbfcf7;
+  color: #637052;
+}
+.effect-toggle {
+  margin: 18px 0 -10px;
+}
+.custom-palette .wide-button {
+  font-size: 10px;
+}
+@media (max-width: 960px) {
+  .custom-palette {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+@media (min-width: 961px) {
+  .workspace {
+    height: calc(100dvh - 108px);
+    min-height: 750px;
+  }
+  .right-panel,
+  .left-panel {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd4bf transparent;
+  }
+  .right-panel > .panel-heading {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #fbfaf7;
+  }
+  .right-panel > .property-tabs {
+    position: sticky;
+    top: 49px;
+    z-index: 2;
+    background: #fbfaf7;
+  }
+  .stage {
+    min-height: 0;
+  }
+}

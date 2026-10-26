@@ -77,7 +77,15 @@ const icons = {
   Download,
 };
 import { zipSync, strToU8 } from "fflate";
-import { initial, presets, renderSVG, randomize, demo } from "./engine.js";
+import {
+  initial,
+  presets,
+  renderSVG,
+  randomize,
+  demo,
+  generatePalette,
+  tileRecipe,
+} from "./engine.js";
 import "./style.css";
 const $ = (s) => document.querySelector(s);
 let state = initial();
@@ -116,6 +124,10 @@ function validate(v) {
     !v.canvas
   )
     throw Error("올바른 프로젝트 파일이 아닙니다.");
+  if (v.appearance.blurEnabled === undefined)
+    v.appearance.blurEnabled = v.appearance.soft > 0;
+  if (v.appearance.grainEnabled === undefined)
+    v.appearance.grainEnabled = v.appearance.grain > 0;
   for (const group of [
     "unitRecipe",
     "layoutRecipe",
@@ -127,7 +139,9 @@ function validate(v) {
       if (v[group][key] === undefined) v[group][key] = value;
       if (
         typeof value === "number" &&
-        (!Number.isFinite(v[group][key]) || Math.abs(v[group][key]) > 100000)
+        (!Number.isFinite(v[group][key]) ||
+          Math.abs(v[group][key]) >
+            (key === "paletteSeed" ? 4294967295 : 100000))
       )
         throw Error("프로젝트 설정값을 확인하세요.");
     }
@@ -154,6 +168,20 @@ function validate(v) {
   for (const key of ["background", "primary", "secondary", "stroke"])
     if (!/^#[0-9a-f]{6}$/i.test(v.appearance[key]))
       throw Error("올바른 색상값이 아닙니다.");
+  if (
+    !Array.isArray(v.appearance.palette) ||
+    v.appearance.palette.length < 4 ||
+    v.appearance.palette.length > 6 ||
+    v.appearance.palette.some(
+      (c) => typeof c !== "string" || !/^#[0-9a-f]{6}$/i.test(c),
+    ) ||
+    !["paletteEnabled", "blurEnabled", "grainEnabled"].every(
+      (k) => typeof v.appearance[k] === "boolean",
+    ) ||
+    !Number.isInteger(v.appearance.paletteSeed) ||
+    v.appearance.paletteSeed < 0
+  )
+    throw Error("팔레트 설정을 확인하세요.");
   const ranges = {
     size: [12, 140],
     radius: [0, 110],
@@ -176,7 +204,7 @@ function validate(v) {
     v.appearance.grain < 0 ||
     v.appearance.grain > 1 ||
     v.appearance.soft < 0 ||
-    v.appearance.soft > 4
+    v.appearance.soft > 24
   )
     throw Error("효과 설정을 확인하세요.");
   if (
@@ -218,11 +246,6 @@ function validate(v) {
     throw Error("지원하지 않는 이미지입니다.");
   return v;
 }
-function remember() {
-  history.push(JSON.stringify(state));
-  if (history.length > 60) history.shift();
-  future = [];
-}
 function persist() {
   try {
     localStorage.setItem("ftp-project", JSON.stringify(state));
@@ -232,8 +255,12 @@ function persist() {
   }
 }
 function change(fn, rerender = true) {
-  remember();
+  const previous = JSON.stringify(state);
   fn(state);
+  if (previous === JSON.stringify(state)) return;
+  history.push(previous);
+  if (history.length > 60) history.shift();
+  future = [];
   persist();
   if (rerender) draw();
   else paint();
@@ -256,6 +283,16 @@ function select(label, group, key, options) {
 }
 function color(label, key) {
   return `<label class="color-control"><span>${label}</span><span><input type="color" data-group="appearance" data-key="${key}" value="${state.appearance[key]}"/><code>${state.appearance[key].toUpperCase()}</code></span></label>`;
+}
+function paletteEditor() {
+  const a = state.appearance;
+  return `<div class="custom-palette"><div class="section-label">나만의 팔레트 <span>4–6 COLORS</span></div><label class="checkbox"><input id="palette-enabled" type="checkbox" ${a.paletteEnabled ? "checked" : ""}/> 다색 팔레트 적용</label><label class="select-control">색상 수<select id="palette-count" aria-label="팔레트 색상 수">${[4, 5, 6].map((n) => `<option value="${n}" ${a.palette.length === n ? "selected" : ""}>${n}색</option>`).join("")}</select></label><div class="custom-swatches">${a.palette.map((c, i) => `<label><span>색상 ${i + 1}</span><input type="color" data-swatch="${i}" value="${c}" aria-label="색상 ${i + 1}"/><input type="text" data-hex="${i}" value="${c.toUpperCase()}" aria-label="색상 ${i + 1} HEX" maxlength="7" spellcheck="false"/></label>`).join("")}</div><button id="random-palette" class="wide-button">${icon("shuffle", 14)} 랜덤 팔레트 만들기</button><p class="hint">조형·배열·배경을 유지하며 색상만 바꿉니다. 색상은 격자 위치와 내부 조형에 따라 고정됩니다.</p>${a.original ? '<p class="hint">원본 색 유지가 켜져 있습니다. 팔레트를 수정하면 단색 원본으로 전환합니다.</p>' : ""}<p class="hint">PNG 원본은 재색상화하지 않습니다.</p></div>`;
+}
+function usePalette(s) {
+  s.appearance.paletteEnabled = true;
+  s.appearance.original = false;
+  if (s.source.originalMarkup)
+    s.source.markup = monochrome(s.source.originalMarkup);
 }
 function rightPanel() {
   let s = state;
@@ -313,7 +350,7 @@ function rightPanel() {
           )
           .join(
             "",
-          )}</div>${color("배경", "background")}${color("주 조형 · 중앙", "primary")}${color("보조 조형 · 프레임", "secondary")}${color("외곽선", "stroke")}${slider("외곽선 두께", "appearance", "strokeWidth", 0, 12, 0.5)}<div class="section-label">TEXTURE <span>실험</span></div>${select(
+          )}</div>${paletteEditor()}${color("배경", "background")}${color("주 조형 · 중앙", "primary")}${color("보조 조형 · 프레임", "secondary")}${color("외곽선", "stroke")}${slider("외곽선 두께", "appearance", "strokeWidth", 0, 12, 0.5)}<div class="section-label">TEXTURE <span>실험</span></div>${select(
           "효과 적용 대상",
           "appearance",
           "effectRole",
@@ -322,11 +359,13 @@ function rightPanel() {
             ["primary", "주 조형만"],
             ["secondary", "보조 조형만"],
           ],
-        )}${slider("그레인", "appearance", "grain", 0, 1, 0.05)}${slider("내부 밝기", "appearance", "light", 0, 1, 0.05)}${slider("부드러운 가장자리", "appearance", "soft", 0, 4, 0.1)}<p class="hint">그레인은 시드로 고정됩니다. SVG 필터는 편집 프로그램에 따라 다르게 보일 수 있습니다.</p>`
+        )}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="grainEnabled" ${s.appearance.grainEnabled ? "checked" : ""}/> 그레인 켜기</label>${slider("그레인 강도", "appearance", "grain", 0, 1, 0.05)}${slider("내부 밝기", "appearance", "light", 0, 1, 0.05)}<label class="checkbox effect-toggle"><input type="checkbox" data-effect="blurEnabled" ${s.appearance.blurEnabled ? "checked" : ""}/> 블러 켜기</label>${slider("블러 강도", "appearance", "soft", 0, 24, 0.5)}<p class="hint">그레인은 시드로 고정됩니다. SVG 필터는 편집 프로그램에 따라 다르게 보일 수 있습니다.</p>`
       : ""
   }<div class="panel-note">${icon("info", 14)}<p>정지 자료에서 관찰한 규칙의 재구성입니다. 수치는 조절 가능한 추정값입니다.</p></div></div>`;
 }
 function draw() {
+  const rightScroll = $(".right-panel")?.scrollTop || 0;
+  const leftScroll = $(".left-panel")?.scrollTop || 0;
   const p = presets.find((x) => x[0] === state.layoutRecipe.preset);
   $("#app").innerHTML =
     `<header><a class="brand" href="#" aria-label="Form to Pattern">${icon("asterisk", 27)}<span>FORM TO PATTERN<small>GENERATIVE DESIGN STUDIO</small></span></a><div class="mode-tabs">${[
@@ -349,6 +388,8 @@ function draw() {
   createIcons({ icons });
   $("#undo").disabled = !history.length;
   $("#redo").disabled = !future.length;
+  $(".right-panel").scrollTop = rightScroll;
+  $(".left-panel").scrollTop = leftScroll;
 }
 function motionPanel() {
   return `<section class="motion-panel"><div class="motion-top"><button id="play" class="play-button">${icon(playing ? "pause" : "play", 15)}</button>${button("rewind", "skip-back", "처음으로")}${button("prev-frame", "chevron-left", "이전 프레임")}${button("next-frame", "chevron-right", "다음 프레임")}<span id="time-label">${time.toFixed(2)} / ${state.motion.duration}s</span><select id="motion-type">${[
@@ -396,15 +437,8 @@ function paint(animated = false) {
   let options = { guides, structure, motionEnabled: mode === "motion" };
   let svg = renderSVG(state, mode === "motion" ? time : 0, options);
   if (state.canvas.tile) {
-    const tileState = structuredClone(state);
-    tileState.layoutRecipe.offsetX = 0;
-    tileState.layoutRecipe.offsetY = 0;
-    const cell =
-      state.canvas.width / state.layoutRecipe.density + state.layoutRecipe.gap;
-    const tw = cell;
-    tileState.canvas.width = cell;
-    tileState.layoutRecipe.density = 1;
-    tileState.layoutRecipe.gap = 0;
+    const tileState = tileRecipe(state);
+    const tw = tileState.canvas.width;
     svg = renderSVG(tileState, 0, {
       width: tw,
       height: tw,
@@ -466,6 +500,63 @@ function bind(id, fn) {
   if (el) el.onclick = fn;
 }
 function events() {
+  bind("palette-enabled", () =>
+    change((s) => {
+      if (s.appearance.paletteEnabled) s.appearance.paletteEnabled = false;
+      else usePalette(s);
+    }),
+  );
+  if ($("#palette-count"))
+    $("#palette-count").onchange = (e) =>
+      change((s) => {
+        const n = Number(e.target.value),
+          extra = generatePalette(6, s.appearance.paletteSeed);
+        s.appearance.palette = Array.from(
+          { length: n },
+          (_, i) => s.appearance.palette[i] || extra[i],
+        );
+        usePalette(s);
+      });
+  document.querySelectorAll("[data-swatch], [data-hex]").forEach(
+    (el) =>
+      (el.onchange = () => {
+        const v = el.value.trim();
+        if (!/^#[0-9a-f]{6}$/i.test(v)) {
+          toast("HEX 색상은 #FF471A 형식으로 입력하세요.");
+          el.value =
+            state.appearance.palette[
+              Number(el.dataset.swatch ?? el.dataset.hex)
+            ];
+          return;
+        }
+        change((s) => {
+          s.appearance.palette[Number(el.dataset.swatch ?? el.dataset.hex)] =
+            v.toUpperCase();
+          usePalette(s);
+        });
+      }),
+  );
+  bind("random-palette", () =>
+    change((s) => {
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+      s.appearance.paletteSeed = seed;
+      s.appearance.palette = generatePalette(s.appearance.palette.length, seed);
+      usePalette(s);
+    }),
+  );
+  document.querySelectorAll("[data-effect]").forEach(
+    (el) =>
+      (el.onchange = () =>
+        change((s) => {
+          s.appearance[el.dataset.effect] = el.checked;
+          if (el.checked) {
+            const key = el.dataset.effect === "blurEnabled" ? "soft" : "grain";
+            if (!s.appearance[key])
+              s.appearance[key] = key === "soft" ? 8 : 0.35;
+          }
+        })),
+  );
+
   $("#project-title").onchange = (e) =>
     change((s) => (s.title = e.target.value || "이름 없는 실험"));
   document.querySelectorAll("[data-mode]").forEach(
@@ -501,6 +592,8 @@ function events() {
       if (k === "count" || k === "direction") val = Number(val);
       change((s) => {
         s[g][k] = val;
+        if (k === "soft") s.appearance.blurEnabled = val > 0;
+        if (k === "grain") s.appearance.grainEnabled = val > 0;
         if (k === "format") {
           [s.canvas.width, s.canvas.height] =
             val === "landscape"
@@ -713,6 +806,7 @@ function events() {
     (el) =>
       (el.onclick = () =>
         change((s) => {
+          s.appearance.paletteEnabled = false;
           const pals = [
             ["#F2F0E9", "#FF471A", "#6F92B8"],
             ["#161616", "#B6975B", "#F2F2F2"],
@@ -987,15 +1081,8 @@ function openExport() {
       if (format === "png")
         download(await png(svg, width, height), "pattern.png");
       if (format === "tile") {
-        const tileState = structuredClone(state);
-        tileState.layoutRecipe.offsetX = tileState.layoutRecipe.offsetY = 0;
-        const cell =
-          state.canvas.width / state.layoutRecipe.density +
-          state.layoutRecipe.gap;
-        const tw = cell;
-        tileState.canvas.width = cell;
-        tileState.layoutRecipe.density = 1;
-        tileState.layoutRecipe.gap = 0;
+        const tileState = tileRecipe(state);
+        const tw = tileState.canvas.width;
         svg = renderSVG(tileState, 0, {
           width: tw,
           height: tw,

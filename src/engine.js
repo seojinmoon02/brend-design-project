@@ -51,6 +51,11 @@ export const initial = () => ({
     soft: 0,
     effectRole: "all",
     original: false,
+    paletteEnabled: false,
+    palette: ["#FF471A", "#6F92B8", "#B6975B", "#6D7860"],
+    paletteSeed: 42,
+    blurEnabled: false,
+    grainEnabled: false,
   },
   motion: {
     type: "rotate",
@@ -245,7 +250,9 @@ export function renderSVG(
           );
       }
   }
-  let filter = `<filter id="texture" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".65" numOctaves="3" seed="${s.seed}" result="noise"/><feColorMatrix in="noise" type="saturate" values="0"/><feComposite in2="SourceGraphic" operator="in"/><feBlend in="SourceGraphic" mode="soft-light"/></filter><filter id="soft"><feGaussianBlur stdDeviation="${a.soft}"/></filter>`;
+  const blur = a.blurEnabled !== false ? a.soft : 0;
+  const grain = a.grainEnabled !== false ? a.grain : 0;
+  let filter = `<filter id="texture" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".65" numOctaves="3" seed="${s.seed}" result="noise"/><feColorMatrix in="noise" type="saturate" values="0"/><feComposite in2="SourceGraphic" operator="in"/><feBlend in="SourceGraphic" mode="soft-light"/></filter><filter id="soft" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${blur}"/></filter>`;
   const fill = (role) => (structure ? "#292a28" : a[role]);
   if (m.formation && form < 0.02)
     items = [
@@ -269,11 +276,15 @@ export function renderSVG(
           Math.sin(theta + (v.x / width + v.y / height) * Math.PI * 2) *
           30 *
           m.amount;
-      let color = fill(v.role);
-      if (m.type === "color" && !m.formation)
-        color = `hsl(${(phase * 360 + (v.role === "primary" ? 15 : 210)) % 360} 85% 55%)`;
+      const index = paletteIndex(v.id, a.palette?.length || 4);
+      let color =
+        !structure && a.paletteEnabled ? a.palette[index] : fill(v.role);
+      if (m.type === "color" && !m.formation && !structure)
+        color = a.paletteEnabled
+          ? cyclePalette(a.palette, index + phase * a.palette.length)
+          : `hsl(${(phase * 360 + (v.role === "primary" ? 15 : 210)) % 360} 85% 55%)`;
       const effect = a.effectRole === "all" || a.effectRole === v.role;
-      return `<g data-instance="${esc(v.id || String(i))}" transform="translate(${v.x} ${v.y}) rotate(${angle}) scale(${(size / 144) * v.scale}) translate(${-u.cx + u.anchor} ${-u.cy})" fill="${color}" stroke="${structure ? "none" : a.stroke}" stroke-width="${a.strokeWidth}" ${effect && a.soft && !structure ? 'filter="url(#soft)"' : ""}><use href="#source"/>${effect && a.grain && !structure ? `<use href="#source" filter="url(#texture)" opacity="${a.grain}"/>` : ""}${effect && a.light && !structure ? `<use href="#source" fill="url(#shine)" opacity="${a.light}"/>` : ""}</g>`;
+      return `<g data-instance="${esc(v.id || String(i))}" transform="translate(${v.x} ${v.y}) rotate(${angle}) scale(${(size / 144) * v.scale}) translate(${-u.cx + u.anchor} ${-u.cy})" fill="${color}" stroke="${structure ? "none" : a.stroke}" stroke-width="${a.strokeWidth}" ${effect && blur && !structure ? 'filter="url(#soft)"' : ""}><use href="#source"/>${effect && grain && !structure ? `<use href="#source" filter="url(#texture)" opacity="${grain}"/>` : ""}${effect && a.light && !structure ? `<use href="#source" fill="url(#shine)" opacity="${a.light}"/>` : ""}</g>`;
     })
     .join("");
   if (guides)
@@ -307,6 +318,92 @@ export function randomize(s, locks = {}) {
   if (!locks.color) {
     let colors = ["#FF471A", "#6F92B8", "#B6975B", "#161616"];
     r.appearance.primary = colors[Math.floor(random() * 4)];
+    if (r.appearance.paletteEnabled)
+      r.appearance.palette = generatePalette(
+        r.appearance.palette.length,
+        Math.floor(random() * 4294967296),
+      );
   }
   return r;
+}
+
+// Indices follow logical lattice coordinates, never render order or current time.
+export function paletteIndex(id, count) {
+  const match = String(id).match(/^(-?\d+):(-?\d+)(.*)$/);
+  if (!match) return 0;
+  const member = [...match[3]].reduce((n, c) => n + c.charCodeAt(0), 0);
+  return (
+    (((Number(match[1]) + Number(match[2]) + member) % count) + count) % count
+  );
+}
+function cyclePalette(colors, position) {
+  const i = Math.floor(position),
+    f = position - i,
+    n = colors.length;
+  const a = colors[((i % n) + n) % n],
+    b = colors[(((i + 1) % n) + n) % n];
+  return (
+    "#" +
+    [1, 3, 5]
+      .map((k) =>
+        Math.round(
+          parseInt(a.slice(k, k + 2), 16) * (1 - f) +
+            parseInt(b.slice(k, k + 2), 16) * f,
+        )
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+export function generatePalette(count, seed) {
+  let n = seed >>> 0;
+  const random = () => {
+    n = (Math.imul(n, 1664525) + 1013904223) >>> 0;
+    return n / 4294967296;
+  };
+  const base = random() * 360;
+  return Array.from({ length: count }, (_, i) => {
+    const h =
+        (((base + (i * 360) / count + (random() - 0.5) * 24) % 360) + 360) %
+        360,
+      s = 0.45 + random() * 0.35,
+      l = 0.35 + random() * 0.3;
+    const c = (1 - Math.abs(2 * l - 1)) * s,
+      x = c * (1 - Math.abs(((h / 60) % 2) - 1)),
+      m = l - c / 2;
+    const rgb =
+      h < 60
+        ? [c, x, 0]
+        : h < 120
+          ? [x, c, 0]
+          : h < 180
+            ? [0, c, x]
+            : h < 240
+              ? [0, x, c]
+              : h < 300
+                ? [x, 0, c]
+                : [c, 0, x];
+    return (
+      "#" +
+      rgb
+        .map((v) =>
+          Math.round((v + m) * 255)
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")
+    );
+  });
+}
+// Palette coloring repeats every N cells in both directions.
+export function tileRecipe(state) {
+  const s = structuredClone(state),
+    n = s.appearance.paletteEnabled ? s.appearance.palette.length : 1;
+  const cell = s.canvas.width / s.layoutRecipe.density + s.layoutRecipe.gap;
+  s.canvas.width = s.canvas.height = cell * n;
+  s.layoutRecipe.density = n;
+  s.layoutRecipe.gap = 0;
+  s.layoutRecipe.offsetX = s.layoutRecipe.offsetY = 0;
+  return s;
 }
